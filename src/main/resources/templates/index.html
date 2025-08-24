@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1"/>
+    <title>파일 확장자 차단</title>
+    <meta name="_csrf" th:content="${_csrf?.token}"/>
+    <meta name="_csrf_header" th:content="${_csrf?.headerName}"/>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div class="container">
+    <div class="card">
+        <div class="title">◎ 파일 확장자 차단</div>
+        <div class="subtitle">파일 확장자에 따라 특정 형식의 파일을 첨부하거나 전송하지 못하도록 제한</div>
+
+        <div class="row">
+            <div>
+                <h4>고정 확장자</h4>
+                <div class="pills" id="fixedPills">
+                    <label class="pill">
+                        <input type="checkbox" class="ext-checkbox" value="bat" aria-label="bat"
+                               th:checked="${fixedExtensions.contains('bat')}">
+                        <span>bat</span>
+                    </label>
+                    <label class="pill">
+                        <input type="checkbox" class="ext-checkbox" value="cmd" aria-label="cmd"
+                               th:checked="${fixedExtensions.contains('cmd')}">
+                        <span>cmd</span>
+                    </label>
+                    <label class="pill">
+                        <input type="checkbox" class="ext-checkbox" value="com" aria-label="com"
+                               th:checked="${fixedExtensions.contains('com')}">
+                        <span>com</span>
+                    </label>
+                    <label class="pill">
+                        <input type="checkbox" class="ext-checkbox" value="cpl" aria-label="cpl"
+                               th:checked="${fixedExtensions.contains('cpl')}">
+                        <span>cpl</span>
+                    </label>
+                    <label class="pill">
+                        <input type="checkbox" class="ext-checkbox" value="exe" aria-label="exe"
+                               th:checked="${fixedExtensions.contains('exe')}">
+                        <span>exe</span>
+                    </label>
+                    <label class="pill">
+                        <input type="checkbox" class="ext-checkbox" value="scr" aria-label="scr"
+                               th:checked="${fixedExtensions.contains('scr')}">
+                        <span>scr</span>
+                    </label>
+                    <label class="pill">
+                        <input type="checkbox" class="ext-checkbox" value="js" aria-label="js"
+                               th:checked="${fixedExtensions.contains('js')}">
+                        <span>js</span>
+                    </label>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <div>
+                <h4>커스텀 확장자</h4>
+                <div class="input-row">
+                    <div class="field">
+                        <input id="extInput" autocomplete="off" placeholder="확장자 입력"/>
+                    </div>
+                    <button type="button" class="btn" id="addBtn">+추가</button>
+                </div>
+
+                <div style="text-align: right; font-size: 13px; color: #6b7280; margin: 10px 5px 0 0;">
+                    <span id="custom-ext-count" th:text="${customExtensions.size()}">0</span>/200
+                </div>
+
+                <div class="chips-wrap">
+                    <div class="chips" id="chips">
+                        <div th:each="ext : ${customExtensions}" class="chip" th:data-name="${ext}">
+                            <span th:text="'.'+${ext}">.sh</span>
+                            <button class="x" title="삭제" th:aria-label="${ext} + ' 삭제'">×</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const csrfToken = document.querySelector("meta[name='_csrf']")?.content;
+        const csrfHeader = document.querySelector("meta[name='_csrf_header']")?.content;
+        const csrfHeaders = csrfToken ? {[csrfHeader]: csrfToken} : {};
+
+        function addExtension(name, type) {
+            fetch('/api/extensions/add', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json', ...csrfHeaders},
+                body: JSON.stringify({name: name, extensionType: type})
+            })
+                .then(response => {
+                    if (!response.ok) {
+                        return response.json().then(err => {
+                            throw new Error(err.message || '추가에 실패했습니다.')
+                        });
+                    }
+                    return response;
+                })
+                .then(() => {
+                    console.log(`Added: ${name} (Type: ${type})`);
+                    if (type === 'CUSTOM') {
+                        addChipToDOM(name);
+                    }
+                })
+                .catch(error => {
+                    alert(error.message);
+                    if (type === 'FIXED') {
+                        const checkbox = document.querySelector(`.ext-checkbox[value="${name}"]`);
+                        if (checkbox) checkbox.checked = false;
+                    }
+                });
+        }
+
+        function deleteExtension(name, type) {
+            fetch(`/api/extensions/delete`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json', ...csrfHeaders},
+                body: JSON.stringify({name: name, extensionType: type})
+            })
+                .then(response => {
+                    if (!response.ok) {
+                        return response.json().then(err => {
+                            throw new Error(err.message || '삭제에 실패했습니다.')
+                        });
+                    }
+                    return response;
+                })
+                .then(() => {
+                    console.log(`Deleted: ${name}`);
+                    if (type === 'CUSTOM') {
+                        removeChipFromDOM(name);
+                    }
+                })
+                .catch(error => {
+                    alert(error.message);
+                    if (type === 'FIXED') {
+                        const checkbox = document.querySelector(`.ext-checkbox[value="${name}"]`);
+                        if (checkbox) checkbox.checked = true;
+                    }
+                });
+        }
+
+        const fixedCheckboxes = document.querySelectorAll('.ext-checkbox');
+        fixedCheckboxes.forEach(checkbox => {
+            checkbox.addEventListener('change', (event) => {
+                const name = event.target.value;
+                if (event.target.checked) {
+                    addExtension(name, 'FIXED');
+                } else {
+                    deleteExtension(name, 'FIXED');
+                }
+            });
+        });
+
+        const extInput = document.getElementById('extInput');
+        const addBtn = document.getElementById('addBtn');
+        const chipsContainer = document.getElementById('chips');
+        const customExtCountSpan = document.getElementById('custom-ext-count');
+
+        let isComposing = false;
+
+        extInput.addEventListener('compositionstart', () => {
+            isComposing = true;
+        });
+
+        extInput.addEventListener('compositionend', () => {
+            isComposing = false;
+        });
+
+        addBtn.addEventListener('click', handleAddCustom);
+        extInput.addEventListener('keydown', (e) => {
+            if (isComposing) return;
+
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                handleAddCustom();
+            }
+        });
+
+        function handleAddCustom() {
+            const currentCount = chipsContainer.children.length;
+            if (currentCount >= 200) {
+                alert('커스텀 확장자는 최대 200개까지 추가할 수 있습니다.');
+                return;
+            }
+
+            const name = extInput.value.trim();
+            if (!name) return;
+            addExtension(name, 'CUSTOM');
+            extInput.value = '';
+        }
+
+        chipsContainer.addEventListener('click', (event) => {
+            if (event.target.classList.contains('x')) {
+                const chip = event.target.closest('.chip');
+                const name = chip.dataset.name;
+                if (name) {
+                    deleteExtension(name, 'CUSTOM');
+                }
+            }
+        });
+
+        function updateCustomCount() {
+            customExtCountSpan.textContent = chipsContainer.children.length;
+        }
+
+        function addChipToDOM(name) {
+            const chip = document.createElement('div');
+            chip.className = 'chip';
+            chip.dataset.name = name;
+            chip.innerHTML = `<span>.${name}</span><button class="x" title="삭제" aria-label="${name} 삭제">×</button>`;
+            chipsContainer.appendChild(chip);
+            updateCustomCount();
+        }
+
+        function removeChipFromDOM(name) {
+            const chipToRemove = chipsContainer.querySelector(`.chip[data-name="${name}"]`);
+            if (chipToRemove) {
+                chipToRemove.remove();
+                updateCustomCount();
+            }
+        }
+    });
+</script>
+
+</body>
+</html>
